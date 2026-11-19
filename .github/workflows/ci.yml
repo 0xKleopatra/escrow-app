@@ -41,3 +41,9 @@ jobs:
           echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gl.tgz" | sha256sum -c -
           tar xzf gl.tgz gitleaks
           ./gitleaks dir . --redact --no-banner
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Build API and worker container image
+        run: docker build -t escrow-app:ci .

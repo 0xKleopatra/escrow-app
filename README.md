@@ -187,7 +187,14 @@ pnpm install
 pnpm --filter @skillescrow/contract-client build   # generated bindings must be compiled once
 ```
 
-### 2. Create the databases
+### 2. Start Postgres and Redis (Docker Compose)
+
+```bash
+pnpm dev:up        # starts postgres:18-alpine and redis:8-alpine
+# pnpm dev:down    # stops the local containers when done
+```
+
+If you are using local system Postgres instead of Docker Compose, create the databases manually:
 
 ```bash
 createuser skillescrow
