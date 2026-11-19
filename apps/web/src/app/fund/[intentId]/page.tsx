@@ -1,8 +1,15 @@
 'use client';
 import { use, useCallback, useEffect, useState } from 'react';
+ feat/bounty-filters-api-config-wallet-e2e-contract-errors
 import { errorText } from '@/lib/errors';
 import { connect, signTx, WalletUxError } from '@/lib/freighter';
 import { money, type TokenInfo } from '@/lib/api';
+
+import { fromBaseUnits } from '@skillescrow/shared/src/amounts';
+import { explorerTx } from '@/lib/api';
+import { errorText } from '@/lib/errors';
+import { connect, signTx, WalletUxError } from '@/lib/wallet';
+ fresh-build
 
 interface Intent { state: 'open' | 'expired' | 'used'; repo: string | null; issueNumber: number; token: string; amount: string; durationDays: number; bountyId: string | null }
 const PASSPHRASE = process.env.NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE ?? 'Test SDF Network ; September 2015';
@@ -14,7 +21,11 @@ export default function Fund({ params }: { params: Promise<{ intentId: string }>
   const [auto, setAuto] = useState(true);
   const [step, setStep] = useState<'idle' | 'signing' | 'waiting'>('idle');
   const [err, setErr] = useState<string | null>(null);
+ feat/bounty-filters-api-config-wallet-e2e-contract-errors
   const [tokens, setTokens] = useState<TokenInfo[]>([]);
+
+  const [txHash, setTxHash] = useState<string | null>(null);
+ fresh-build
 
   const load = useCallback(async () => {
     const r = await fetch(`/api/intents/${encodeURIComponent(intentId)}`);
@@ -52,6 +63,7 @@ export default function Fund({ params }: { params: Promise<{ intentId: string }>
       const s = await fetch('/api/tx/submit', { method: 'POST', headers: h, body: JSON.stringify({ xdr: signed, address }) });
       const sj = await s.json();
       if (!s.ok) throw new WalletUxError(errorText(sj.error?.code, 'The network rejected the transaction.'));
+      setTxHash(sj.hash);
       setStep('waiting');
     } catch (e) {
       setStep('idle');
@@ -77,6 +89,7 @@ export default function Fund({ params }: { params: Promise<{ intentId: string }>
           <label className="check"><input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} /> Pay automatically when I merge a PR (recommended)</label>
           <p className="muted">{auto ? 'A relayer may release this bounty when you merge, capped by the escrow limits.' : 'You will sign the release yourself after merging.'}</p>
           <button onClick={fund} disabled={!csrf || step !== 'idle'}>{step === 'signing' ? 'Confirm in Freighter…' : step === 'waiting' ? 'Waiting for confirmation…' : 'Connect wallet and fund'}</button>
+          {txHash && <p className="muted" role="status">Transaction submitted. Tracking confirmation… <a href={explorerTx(txHash)} rel="noreferrer noopener">View transaction ↗</a></p>}
           {err && <p className="error" role="alert">{err}</p>}
           <p className="muted small">You need a USDC trustline on your account for USDC bounties. We never ask for your secret key.</p>
         </>
