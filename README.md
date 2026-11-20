@@ -379,6 +379,7 @@ Each group is optional. Leave it unset and that feature stays off.
 | **GitHub App** | `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | Bot comments, labels, PR tracking, GitHub sign-in. **All five or none** — a partial set is rejected. |
 | **Relayer** | `RELAYER_SECRET`, `RELAYER_MIN_XLM_ALERT` | Automatic release on merge. **Refused outright on mainnet** — use a KMS signer there. |
 | **AI review** | `ANTHROPIC_API_KEY`, `AI_MODEL`, `AI_MAX_REVIEWS_PER_PR_PER_DAY`, `AI_MAX_REVIEWS_PER_REPO_PER_DAY` | Advisory PR reviews, capped per PR and per repo per day. |
+| **Proxy** | `TRUST_PROXY` | Behind Render/Vercel/nginx, set the number of proxy hops (e.g. `1`) or a comma-separated list of proxy IPs/CIDRs so rate limits apply per real client IP instead of per proxy. Unset by default (no proxy trusted); `true` and `/0` ranges are rejected. |
 | **Admin** | `ADMIN_GITHUB_IDS` | Comma-separated GitHub user ids that get `/admin`. Re-applied on every login. |
 | **Alerts** | `ALERT_WEBHOOK_URL` | Low relayer balance, failed payouts, indexer lag, stale disputes. |
 | **Network** | `STELLAR_NETWORK`, `STELLAR_RPC_URL`, `STELLAR_NETWORK_PASSPHRASE`, `TOKEN_USDC_CONTRACT_ID`, `TOKEN_XLM_CONTRACT_ID` | Defaults to Stellar **testnet**. |

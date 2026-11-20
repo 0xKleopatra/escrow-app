@@ -13,7 +13,12 @@ export interface DeliveryStore {
 }
 
 export async function buildServer(cfg: Config, store: DeliveryStore, api?: ApiDeps, health?: () => Promise<{ ok: boolean }>): Promise<FastifyInstance> {
-  const app = Fastify({ logger: { level: cfg.LOG_LEVEL, redact: ['req.headers.authorization', 'req.headers.cookie'] } });
+  // trustProxy makes req.ip the real client (from X-Forwarded-For) rather than the proxy, which the global and
+  // anonymous rate limits key on. Without it every user behind Render/Vercel shares one limit.
+  const app = Fastify({
+    trustProxy: cfg.TRUST_PROXY,
+    logger: { level: cfg.LOG_LEVEL, redact: ['req.headers.authorization', 'req.headers.cookie'] },
+  });
   await app.register(helmet);
   await app.register(rateLimit, { max: 300, timeWindow: '1 minute' });
 
