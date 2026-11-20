@@ -7,6 +7,11 @@
 
 ## Running the processes
 - API: `pnpm --filter @skillescrow/api dev` (needs Postgres, Redis). Worker: `pnpm --filter @skillescrow/api worker` (indexer, webhook consumer, relayer when `RELAYER_SECRET` is set, alerts, reminders).
-- Alerts go to `ALERT_WEBHOOK_URL` (once per message per hour). `/health` returns 503 when the DB, RPC or Redis is down or the indexer is over 60 ledgers behind.
+- Alerts go to `ALERT_WEBHOOK_URL` (once per message per hour).
+- Health probes (API):
+  - `GET /livez` is **liveness**. It checks the process only (always 200 while the server is up) and is not rate limited. Use it for restart decisions; an RPC blip or a lagging indexer must never restart a healthy API.
+  - `GET /readyz` is **readiness**. It runs the dependency checks and returns 503 when the DB, RPC or Redis is down or the indexer is over 60 ledgers behind. Use it for traffic routing and alerting, never for restarts.
+  - `GET /health` is kept as an alias of `/readyz` for existing monitors.
+  - `render.yaml` defines only the worker, which serves no HTTP, so it has no health check path. If the API is ever run as a Render web service, set `healthCheckPath: /livez`.
 - Retry a failed payout from the admin page only when no tx hash is stored; otherwise verify the hash on chain first.
 - Web: `API_INTERNAL_URL` is baked in at `next build`; rebuild when it changes.
