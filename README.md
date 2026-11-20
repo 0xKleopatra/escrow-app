@@ -225,8 +225,9 @@ curl localhost:3001/health
 # {"ok":true,"db":true,"rpc":true,"redis":true,"indexerLagLedgers":0}
 ```
 
-`/health` returns **503** when the database, RPC or Redis is unreachable, or when the indexer has
-fallen more than ~5 minutes behind the chain.
+`/readyz` (also served as `/health`) returns **503** when the database, RPC or Redis is unreachable,
+or when the indexer has fallen more than ~5 minutes behind the chain. `/livez` only reports that the
+process is up, so use it for restart probes and `/readyz` for traffic routing.
 
 ### 5. Run the tests
 
@@ -416,7 +417,9 @@ falling back to per IP.
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| `GET` | `/health` | — | db, RPC, Redis, indexer lag (503 when unhealthy) |
+| `GET` | `/livez` | — | liveness: process only, always 200 while the server is up |
+| `GET` | `/readyz` | — | readiness: db, RPC, Redis, indexer lag (503 when unhealthy) |
+| `GET` | `/health` | — | alias of `/readyz` |
 | `GET` | `/config` | — | live escrow fee, duration settings, and allowed token metadata/limits |
 | `GET` | `/filters` | — | available bounty statuses, tokens, and repositories |
 | `GET` | `/auth/login`, `/auth/callback` | — | GitHub OAuth (PKCE) |

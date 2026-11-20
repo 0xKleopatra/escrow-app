@@ -1,4 +1,4 @@
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import type { Config } from './config.js';
@@ -24,10 +24,18 @@ export async function buildServer(cfg: Config, store: DeliveryStore, api?: ApiDe
     try { done(null, JSON.parse((body as Buffer).toString('utf8'))); } catch { done(Object.assign(new Error('invalid JSON'), { statusCode: 400 }), undefined); }
   });
 
-  app.get('/health', async (_req, reply) => {
+  // Liveness: the process is up and serving. Checks no dependencies, so a slow RPC or lagging indexer never gets a healthy API restarted.
+  // Exempt from the global rate limit: a 429 on a liveness probe would look like a dead process.
+  app.get('/livez', { config: { rateLimit: false } }, async () => ({ ok: true }));
+
+  // Readiness: the dependency checks (db, RPC, Redis, indexer lag). 503 means "do not route traffic", not "restart".
+  const readiness = async (_req: FastifyRequest, reply: FastifyReply) => {
     const h = health ? await health() : { ok: true };
     return reply.code(h.ok ? 200 : 503).send(h);
-  });
+  };
+  app.get('/readyz', readiness);
+  // Kept for existing monitors and docs; same as /readyz.
+  app.get('/health', readiness);
   if (api) registerApi(app, api);
 
   app.post('/github/webhooks', async (req, reply) => {
