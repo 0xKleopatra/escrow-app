@@ -3,15 +3,10 @@
 services:
   - type: worker
     name: escrow-worker
-    runtime: node
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerCommand: node apps/api/dist/worker.mjs
     branch: fresh-build
-    buildCommand: >-
-      npm install -g pnpm@12.16.1 &&
-      pnpm install --frozen-lockfile &&
-      pnpm --filter @skillescrow/contract-client build &&
-      pnpm --filter @skillescrow/api exec prisma generate &&
-      pnpm --filter @skillescrow/api build:worker
-    startCommand: node apps/api/dist/worker.mjs
     envVars:
       - key: NODE_VERSION
         value: "26"
