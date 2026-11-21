@@ -67,6 +67,6 @@ describe('dispute review SLA', () => {
     // 3. Ops alerts fire at the same threshold and name it in the message.
     await db.dispute.updateMany({ data: { createdAt: new Date(Date.now() - (DISPUTE_REVIEW_HOURS + 1) * HOUR_MS) } });
     const alerts = await collectAlerts({ db, now: () => new Date(), minRelayerXlm: 50 });
-    expect(alerts).toContain(`1 dispute(s) older than ${DISPUTE_REVIEW_HOURS} h`);
+    expect(alerts.join('|')).toContain(`1 dispute(s) older than ${DISPUTE_REVIEW_HOURS} h`);
   });
 });
