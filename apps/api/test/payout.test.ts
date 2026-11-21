@@ -17,7 +17,7 @@ const deps = (): PayoutDeps => ({
 beforeEach(async () => {
   chainState = { status: 'Open', relayerAllowed: true, maintainer: 'GMAINT' };
   notes = [];
-  await db.$executeRawUnsafe('TRUNCATE "Payout","Dispute","PullRequestBounty","PullRequest","Bounty","Repo","Installation","User" CASCADE');
+  await db.$executeRawUnsafe('TRUNCATE "AuditLog","Payout","Dispute","PullRequestBounty","PullRequest","Bounty","Repo","Installation","User" CASCADE');
   await db.installation.create({ data: { id: 1n, accountLogin: 'o', accountType: 'User' } });
   await db.repo.create({ data: { id: 100n, installationId: 1n, fullName: 'o/r', private: false } });
   await db.bounty.create({ data: { id: 1n, repoId: 100n, issueNumber: 7, issueTitle: '', issueUrl: '', criteria: [], maintainer: 'GMAINT', token: 'C', amount: '1000', feeBps: 300, deadline: new Date(), relayerAllowed: true, status: 'OPEN', fundTx: 't', createdAt: new Date() } });
@@ -65,6 +65,15 @@ describe('onMerge', () => {
     await user('GMAINT');
     await merge();
     expect(await status()).toBe('FAILED');
+  });
+  it('asks for a wallet at most once per payout, even across repeated advance() calls', async () => {
+    await user(null);
+    await merge(); // onMerge already calls advance once
+    await advance(deps(), 1n);
+    await advance(deps(), 1n);
+    expect(notes.filter((n) => n.includes('/me'))).toHaveLength(1);
+    const payout = await db.payout.findFirstOrThrow();
+    expect(await db.auditLog.findMany({ where: { action: 'payout.wallet_link_reminder', target: `payout:${payout.id}` } })).toHaveLength(1);
   });
   it('concurrent advances move the payout once', async () => {
     await user('GWINNER');

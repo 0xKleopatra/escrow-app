@@ -10,6 +10,7 @@ export interface PayoutDeps {
 }
 
 const key = (bountyId: bigint) => `release:${bountyId}`;
+const WALLET_REMINDER = 'payout.wallet_link_reminder';
 const safeNotify = async (d: PayoutDeps, b: bigint, pr: number, m: string) => {
   try { await d.notifier.notify(b, pr, m); } catch { /* comments are best effort */ }
 };
@@ -49,7 +50,13 @@ export async function advance(d: PayoutDeps, bountyId: bigint): Promise<string> 
   if (chain.status !== 'Open') return 'not-open';
   const user = await d.db.user.findUnique({ where: { githubId: payout.winnerGithubId } });
   if (!user?.wallet) {
-    await safeNotify(d, bountyId, payout.prNumber, `Link your wallet at ${d.webUrl}/me to receive your payout.`);
+    // advance() runs on merge, on wallet-link retries and on future retry paths. Record the
+    // reminder in the audit log so the same payout never gets the comment twice.
+    const target = `payout:${payout.id}`;
+    if (!await d.db.auditLog.findFirst({ where: { action: WALLET_REMINDER, target } })) {
+      await safeNotify(d, bountyId, payout.prNumber, `Link your wallet at ${d.webUrl}/me to receive your payout.`);
+      await d.db.auditLog.create({ data: { actor: 'system', action: WALLET_REMINDER, target, data: { bountyId: String(bountyId), prNumber: payout.prNumber } } });
+    }
     return 'PENDING_WALLET';
   }
   if (user.wallet === chain.maintainer) {
