@@ -33,6 +33,7 @@ export function createGithubClient(cfg: GithubClientConfig) {
   const now = cfg.now ?? Date.now;
   const pem = cfg.privateKey.replace(/\\n/g, '\n');
   const tokens = new Map<string, { token: string; expiresAt: number }>();
+  const inFlight = new Map<string, Promise<string>>();
 
   const appJwt = () => {
     const t = Math.floor(now() / 1000);
@@ -43,13 +44,23 @@ export function createGithubClient(cfg: GithubClientConfig) {
 
   async function installationToken(id: bigint, force = false): Promise<string> {
     const key = id.toString();
+    const pending = inFlight.get(key);
+    if (pending) return pending;
     const hit = tokens.get(key);
     if (!force && hit && hit.expiresAt - 60_000 > now()) return hit.token;
-    const r = await doFetch(`${api}/app/installations/${key}/access_tokens`, { method: 'POST', headers: { ...base, authorization: `Bearer ${appJwt()}` } });
-    if (!r.ok) throw new GithubError(r.status, `installation token: ${r.status}`);
-    const j = (await r.json()) as { token: string; expires_at: string };
-    tokens.set(key, { token: j.token, expiresAt: Date.parse(j.expires_at) });
-    return j.token;
+    const request = (async () => {
+      const r = await doFetch(`${api}/app/installations/${key}/access_tokens`, { method: 'POST', headers: { ...base, authorization: `Bearer ${appJwt()}` } });
+      if (!r.ok) throw new GithubError(r.status, `installation token: ${r.status}`);
+      const j = (await r.json()) as { token: string; expires_at: string };
+      tokens.set(key, { token: j.token, expiresAt: Date.parse(j.expires_at) });
+      return j.token;
+    })();
+    inFlight.set(key, request);
+    try {
+      return await request;
+    } finally {
+      if (inFlight.get(key) === request) inFlight.delete(key);
+    }
   }
 
   async function call(installation: bigint, method: string, path: string, body?: unknown, retried = false): Promise<Response> {

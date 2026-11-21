@@ -44,6 +44,20 @@ describe('installation tokens', () => {
     expect(g.calls.filter((x) => x.path.includes('access_tokens'))).toHaveLength(2);
     expect(g.calls.at(-1)!.auth).toBe('Bearer tok2');
   });
+  it('coalesces concurrent refreshes of an expired token into a single request', async () => {
+    const g = fakeGithub({ tokenTtlMs: 600_000 });
+    g.routes['GET /repos/o/r/collaborators/alice/permission'] = () => ({ status: 200, json: { permission: 'write' } });
+    const c = make(g);
+    expect(await c.getPermission(9n, 'o/r', 'alice')).toBe('write');
+    expect(g.calls.filter((x) => x.path.includes('access_tokens'))).toHaveLength(1);
+    g.advance(600_000); // token is expired: inside the 60 s refresh window
+    const results = await Promise.all(Array.from({ length: 10 }, () => c.getPermission(9n, 'o/r', 'alice')));
+    expect(results).toEqual(Array<string>(10).fill('write'));
+    const tokenRequests = g.calls.filter((x) => x.path.includes('access_tokens'));
+    expect(tokenRequests).toHaveLength(2); // one initial token + one shared refresh
+    const permissionCalls = g.calls.filter((x) => x.path.includes('/collaborators/alice/permission'));
+    expect(permissionCalls.slice(-10).every((x) => x.auth === 'Bearer tok2')).toBe(true);
+  });
   it('retries once with a fresh token after a 401', async () => {
     const g = fakeGithub({ rejectFirstUse: true });
     g.routes['GET /repos/o/r/collaborators/alice/permission'] = () => ({ status: 200, json: { permission: 'admin' } });
