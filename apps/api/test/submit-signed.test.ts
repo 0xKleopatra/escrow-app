@@ -1,8 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SubmitTxError } from '../src/chain/errors.js';
 
+const CONTRACT = 'CCEKBPYCWKNTXIQLXJHVAF7RYGUZZ6MITA7VVJBOK5BHXUO44ELZ4F4V';
+const FOREIGN = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM';
+
+function invokeOp(contractId = CONTRACT, fn = 'fund_bounty') {
+  return {
+    type: 'invokeHostFunction',
+    func: {
+      type: 'hostFunctionTypeInvokeContract',
+      invokeContract: {
+        contractAddress: { __addr: contractId },
+        functionName: { toString: () => fn },
+      },
+    },
+  };
+}
+
 const { fakeTx, fromXDR } = vi.hoisted(() => {
-  const fakeTx = { source: 'GSOURCE', operations: [{ type: 'invokeHostFunction' }] as any[] };
+  const fakeTx = { source: 'GSOURCE', operations: [] as any[] };
   const fromXDR = vi.fn(() => fakeTx);
   return { fakeTx, fromXDR };
 });
@@ -20,6 +36,7 @@ vi.mock('@stellar/stellar-sdk', async (importOriginal) => {
     ...actual,
     TransactionBuilder: { ...actual.TransactionBuilder, fromXDR },
     Transaction: FakeTransaction,
+    Address: { fromScAddress: (sc: any) => ({ toString: () => sc.__addr }) },
   };
 });
 
@@ -28,7 +45,7 @@ import { createChain } from '../src/chain/client.js';
 const cfg = {
   rpcUrl: 'https://rpc.example',
   networkPassphrase: 'Test SDF Network ; September 2015',
-  contractId: 'CCEKBPYCWKNTXIQLXJHVAF7RYGUZZ6MITA7VVJBOK5BHXUO44ELZ4F4V',
+  contractId: CONTRACT,
 };
 
 function makeChain(sendTransaction: ReturnType<typeof vi.fn>) {
@@ -39,7 +56,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   fromXDR.mockClear();
   fakeTx.source = 'GSOURCE';
-  fakeTx.operations = [{ type: 'invokeHostFunction' }];
+  fakeTx.operations = [invokeOp()];
 });
 
 afterEach(() => {
@@ -96,6 +113,22 @@ describe('submitSigned', () => {
     const send = vi.fn().mockResolvedValue({ status: 'PENDING', hash: 'ok' });
     const chain = makeChain(send);
     await expect(chain.submitSigned('XDR', 'GOTHER')).rejects.toThrow('unexpected source account');
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('rejects calls to a foreign contract', async () => {
+    const send = vi.fn().mockResolvedValue({ status: 'PENDING', hash: 'ok' });
+    const chain = makeChain(send);
+    fakeTx.operations = [invokeOp(FOREIGN, 'fund_bounty')];
+    await expect(chain.submitSigned('XDR')).rejects.toThrow('contract not allowed');
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('rejects disallowed contract functions', async () => {
+    const send = vi.fn().mockResolvedValue({ status: 'PENDING', hash: 'ok' });
+    const chain = makeChain(send);
+    fakeTx.operations = [invokeOp(CONTRACT, 'set_config')];
+    await expect(chain.submitSigned('XDR')).rejects.toThrow('function not allowed');
     expect(send).not.toHaveBeenCalled();
   });
 });
