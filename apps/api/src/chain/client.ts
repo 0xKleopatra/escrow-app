@@ -1,5 +1,5 @@
 import { Client, type Bounty, type Config, type TokenLimits } from '@skillescrow/contract-client';
-import { rpc, TransactionBuilder, Transaction } from '@stellar/stellar-sdk';
+import { Address, rpc, TransactionBuilder, Transaction } from '@stellar/stellar-sdk';
 import { SubmitTxError } from './errors.js';
 
 export interface ChainConfig {
@@ -10,6 +10,17 @@ export interface ChainConfig {
 
 const SUBMIT_RETRY_ATTEMPTS = 3;
 const SUBMIT_RETRY_DELAY_MS = 500;
+const ALLOWED_CONTRACT_FUNCTIONS = new Set(['fund_bounty', 'release', 'refund', 'open_dispute', 'resolve']);
+
+function assertAllowedContractCall(op: any, contractId: string) {
+  const func = op.func;
+  const invoke = func?.invokeContract ?? (func?.type === 'hostFunctionTypeInvokeContract' ? func.value : undefined);
+  if (!invoke) throw new Error('disallowed host function');
+  const target = Address.fromScAddress(invoke.contractAddress).toString();
+  if (target !== contractId) throw new Error('contract not allowed');
+  const fn = typeof invoke.functionName === 'string' ? invoke.functionName : invoke.functionName.toString();
+  if (!ALLOWED_CONTRACT_FUNCTIONS.has(fn)) throw new Error('function not allowed');
+}
 
 export function createChain(cfg: ChainConfig, serverOverride?: rpc.Server) {
   const server = serverOverride ?? new rpc.Server(cfg.rpcUrl, { allowHttp: cfg.rpcUrl.startsWith('http://') });
@@ -94,6 +105,7 @@ export function createChain(cfg: ChainConfig, serverOverride?: rpc.Server) {
       if (!(tx instanceof Transaction) || tx.operations.length !== 1) throw new Error('expected a single-operation transaction');
       const op = tx.operations[0]!;
       if (op.type !== 'invokeHostFunction') throw new Error('not a contract call');
+      assertAllowedContractCall(op, cfg.contractId);
       if (expectedSource && tx.source !== expectedSource) throw new Error('unexpected source account');
       for (let attempt = 1; attempt <= SUBMIT_RETRY_ATTEMPTS; attempt++) {
         const r = await server.sendTransaction(tx);
