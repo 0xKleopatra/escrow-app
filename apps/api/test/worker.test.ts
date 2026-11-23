@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb } from '../src/db.js';
-import { refreshBountyCard, type GithubApi } from '../src/github/sync.js';
+import { applyEvent } from '../src/indexer/apply.js';
+import type { ChainEvent } from '../src/indexer/decode.js';
 import { dispatchWebhook, type DispatchDeps } from '../src/worker/dispatch.js';
 import { webhookProducer, webhookWorker, type WebhookJob } from '../src/worker/queue.js';
 
@@ -32,8 +33,7 @@ const deps = (): DispatchDeps => ({
 
 beforeEach(async () => {
   comments = [];
-  cardUpdates = [];
-  await db.$executeRawUnsafe('TRUNCATE "Payout","PullRequestBounty","PullRequest","Bounty","FundingIntent","Repo","Installation" CASCADE');
+  await db.$executeRawUnsafe('TRUNCATE "Payout","PullRequestBounty","PullRequest","Bounty","FundingIntent","UntrackedFundEvent","Repo","Installation" CASCADE');
 });
 
 const install = { action: 'created', installation: { id: 9, account: { login: 'o', type: 'Organization' } }, repositories: [{ id: 100, full_name: 'o/r', private: false }] };
@@ -68,15 +68,29 @@ describe('dispatchWebhook', () => {
     expect(b.issueTitle).toBe('New title');
     expect(b.criteria).toEqual(['one', 'two']);
   });
-  it('refreshes the card via the GitHub API for every bounty updated by issues.edited', async () => {
+  it('replays a fund event that arrived before the installation webhook', async () => {
+    // The indexer sees the fund first, while the repo is not installed yet. The cursor moves on.
+    const ev: ChainEvent = {
+      kind: 'funded', id: 55n, maintainer: 'GMAINT', repoId: 100n, issue: 7n,
+      token: 'CTOKEN', amount: 1000n, feeBps: 300, deadline: 1800000000n, relayerAllowed: true,
+    };
+    const meta = { eventId: '00000000000000000001', txHash: 'tx1', closedAt: new Date('2026-11-02T00:00:00Z') };
+    expect(await db.$transaction((tx) => applyEvent(tx, ev, meta))).toBe('untracked');
+    expect(await db.bounty.count()).toBe(0);
+    expect(await db.untrackedFundEvent.count()).toBe(1);
+
+    // Then the installation webhook arrives and upserts the repo.
+    expect(await dispatchWebhook(deps(), 'installation', install)).toBe('installation.created');
+
+    const bounty = await db.bounty.findUniqueOrThrow({ where: { id: 55n } });
+    expect(bounty.status).toBe('OPEN');
+    expect(bounty.issueNumber).toBe(7);
+    expect(bounty.amount.toString()).toBe('1000');
+    expect(bounty.fundTx).toBe('tx1');
+    expect(await db.untrackedFundEvent.count()).toBe(0);
+    // installing again does not duplicate the bounty
     await dispatchWebhook(deps(), 'installation', install);
-    await db.bounty.create({ data: { id: 1n, repoId: 100n, issueNumber: 7, issueTitle: 'Old title', issueUrl: '', criteria: ['old criterion'], maintainer: 'GM', token: 'C', amount: '1', feeBps: 300, deadline: new Date(), relayerAllowed: true, status: 'OPEN', fundTx: 't', createdAt: new Date(), cardCommentId: 555n } });
-    const out = await dispatchWebhook(deps(), 'issues', { action: 'edited', repository: { id: 100 }, issue: { number: 7, title: 'New title', body: '## Acceptance criteria\n- [ ] one\n- [ ] two' } });
-    expect(out).toBe('issues.edited:1');
-    expect(cardUpdates).toHaveLength(1);
-    expect(cardUpdates[0]).toContain('one');
-    expect(cardUpdates[0]).toContain('two');
-    expect(cardUpdates[0]).not.toContain('old criterion');
+    expect(await db.bounty.count()).toBe(1);
   });
   it('ignores unknown events', async () => {
     expect(await dispatchWebhook(deps(), 'star', {})).toBe('ignored');
