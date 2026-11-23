@@ -89,6 +89,6 @@ const onApplied = ghClient
       void refreshBountyCard(sync, bountyId).catch(fail('card refresh'));
     }
   : undefined;
-void runIndexer({ db, server: chain.server, contractId: cfg.BOUNTY_CONTRACT_ID, log, ...(onApplied ? { onApplied } : {}) }, ac.signal);
+void runIndexer({ db, server: chain.server, contractId: cfg.BOUNTY_CONTRACT_ID, log, onAlert: (m) => void send([m]), ...(onApplied ? { onApplied } : {}) }, ac.signal);
 for (const s of ['SIGINT', 'SIGTERM'] as const) process.on(s, () => { ac.abort(); clearInterval(alertTimer); clearInterval(reminderTimer); void Promise.all([w.close(), reviewConsumer?.close(), reviews?.close()]).then(() => process.exit(0)); });
 log('worker started');
